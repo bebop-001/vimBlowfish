@@ -1,0 +1,202 @@
+#!/usr/bin/env python3
+
+import struct, hashlib, unittest, operator, getpass
+
+appBaseName = ''
+USAGE = """USAGE: %s [-t -s -f] inFile outFile [password]
+  -t  Run the selftest, print results and exit
+  -s  Run the selftest, print results and and save to files, then
+      exit
+  -f  force write to the output file if it exists.  If not set and the
+      output file exists, we abort.
+  inFile   the input file
+  outFile  the output file
+  password the encrypt/decrypt password.  Optional unless inFile or outFile
+     is stdin opr stdout.
+     We examine the input file and if it is a non-encrypted file, we 
+  encrypt the result and send it to outFile.  Likewise, if the input
+  is encrypted we decrypt and send the output to outFile.
+     '-' for inFile/outFile means send input/output to stdin/stdout.
+     If inFile or outFile is to stdin/stdout, a command line password
+  must be supplied.
+  """
+
+# For debut print input bytes in format similar to old dos debug output.
+def bytesToString(bytesIn):
+  # indicator for non-ascii chars or non-printable ascii chars...
+  NON_PRINT_ASCII = 248 # ø
+  rv = ''; i = 0
+  # for each 16 byte segment of the input bytes...
+  while i < len(bytesIn):
+    b = bytesIn[i:i+16]
+    b0 = b[0:7]
+    b1 = b[8:] if len(b) > 8 else []
+    # print hex chars.
+    s = "%3d" % (i) + ''.join(" {:02x}".format(x) for x in (b0))
+    if b1:
+      s += ' |' + ''.join(" {:02x}".format(x) for x in (b1))
+    # extend string for formattng.
+    while len(s) < 53: s += ' '
+    # print ascci or indicate char is NON_PRINT_ASCII.
+    for x in (b0):
+      s += chr(NON_PRINT_ASCII) if x < ord(' ') or x > ord('~') else chr(x)
+    if b1: s += ' | '
+    for x in (b1):
+      s += chr(NON_PRINT_ASCII) if x < ord(' ') or x > ord('~') else chr(x)
+    rv += s
+    i += 16
+    if i < len(bytesIn): rv += "\n"
+  return rv
+
+from Crypto.Cipher import Blowfish
+swapendian = lambda data: struct.pack('<2L', *struct.unpack('>2L', data))
+class Blowfish_ECB:
+  def new(key) : return Blowfish_ECB(key)
+  def __init__(self, key):
+    self.blowfish = Blowfish.new(key, mode=Blowfish.MODE_ECB)
+    self.type = ''
+  def decrypt(self, ciphertext):
+    if self.type:
+      if self.type != 'decrypt':
+        raise Exception('cipher already used as type: ' + self.type)
+    else:
+      self.type = 'decrypt'
+    return swapendian(self.blowfish.encrypt(swapendian(ciphertext)))
+  def encrypt(self, plaintext):
+    if self.type:
+      if self.type != 'encrypt':
+        raise Exception('cipher already used as type: ' + self.type)
+    else:
+      self.type = 'encrypt'
+    return swapendian(self.blowfish.decrypt(swapendian(plaintext)))
+
+def pwToKey(pw, salt):
+  for i in range(1000):
+    pw = hashlib.sha256(pw.encode() + salt).hexdigest()
+  return hashlib.sha256(pw.encode() + salt).digest()
+
+VIM_MAGIC = b'VimCrypt~03!'
+def decrypt(f, pw=None):
+  if f.read(12) != VIM_MAGIC:
+    raise Exception('not a blowfish2-encoded vimcrypt file')
+  salt = f.read(8)
+  seed = f.read(8)
+  if pw is None:
+    pw = getpass.getpass('password: ')
+  key = pwToKey(pw, salt)
+  blowfish = Blowfish_ECB.new(key)
+  iv = seed
+  ciphertext = f.read(8)
+  decrypted = bytearray()
+  while ciphertext:
+    c0 = blowfish.decrypt(iv)
+    plaintext = bytes(map(operator.xor, c0, ciphertext))
+    decrypted.extend(plaintext)
+    iv = ciphertext
+    ciphertext = f.read(8)
+  return decrypted
+
+def encrypt(f, pw, salt, seed):
+  key = pwToKey(pw, salt)
+  blowfish = Blowfish_ECB.new(key)
+  encrypted = bytearray(VIM_MAGIC + salt + seed)
+  iv = seed
+  plaintext = f.read(8)
+  while plaintext:
+    c0 = blowfish.decrypt(iv)
+    ciphertext = bytes(map(operator.xor, c0, plaintext))
+    encrypted.extend(ciphertext)
+    iv = ciphertext
+    plaintext = f.read(8)
+  return encrypted
+
+# Using info from a file created using vim with blowfish2, compare
+# results encrypting and decrypting the file.
+def selfTest(saveResults=''):
+  test_PW = 'hello'
+  test_salt = b'\x09\x5b\x17\xda\xdc\xd0\xb7\x16'
+  test_seed = b'\x52\x01\xb1\x60\x85\x30\x9a\x7a'
+  test_encrypted = b''.join([b'\xfd\xa2\x9e\x94\x7f\xd4\x5f',
+    b'\xa6\x4d\xaa\x5e\x39\x6a\x14\x12\xc0',
+    b'\x7b\x59\x90\xc5\x54\x5b\x6e\x38\xe9\x6f'])
+  testEncrypted = b''.join(
+    [VIM_MAGIC, test_salt, test_seed, test_encrypted])
+  testPlaintext = b'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+
+  f = io.BytesIO(testEncrypted)
+  decrypted = decrypt(f, test_PW)
+  if decrypted == testPlaintext:
+    print("self test of decryption passed.")
+  else:
+    print("self test of decryption FAILED.")
+    print("testPlaintext:\n" + bytesToString(testPlaintext) + "\n"
+      + "decrypted:\n" + bytesToString(decrypted))
+  f = io.BytesIO(testPlaintext)
+  encrypted = encrypt(f, test_PW, test_salt, test_seed)
+  if encrypted == testEncrypted: print("self test of encryption passed.")
+  else: print("self test of encryption FAILED.\n"
+      + "testEncrypted:\n" + bytesToString(testEncrypted)
+      + "\nencrypted:\n" + bytesToString(encrypted))
+  encryptedresults = decryptedResults = ''
+  if saveResults:
+    fName = saveResults + '%s.%s' % ('encrypted', test_PW)
+    print ("Saving to " + fName)
+    saveTo = open(fName, 'wb')
+    saveTo.write(encrypted)
+    saveTo.close()
+    fName = saveResults + '%s.%s' % ('decrypted', test_PW)
+    print ("Saving to " + fName)
+    saveTo = open(fName, 'wb')
+    saveTo.write(decrypted)
+    saveTo.close()
+
+import io, os, re, sys
+def main(argv=sys.argv):
+  global USAGE
+  USAGE = USAGE % (os.path.basename(argv[0]))
+  USAGE = USAGE.split("\n")
+  parseState = 0;
+  force = doTest = saveResults = False
+  inFile = outFile = passwd = ''
+  try:
+    if len(argv) == 1: raise Exception("No arguments given.")
+    for i in (range(len(argv))):
+      arg = argv[i]
+      if re.match('^-[stf]$', arg):
+        if parseState == 0:
+          if arg == '-t':
+            doTest = True
+          elif arg == '-s':
+            saveResults = True
+          elif arg == '-f':
+            force = True
+        else:
+          raise Exception("Not a valid argument here:" + arg)
+      elif arg == '-':
+        if parseState == 1: # inFile
+          inFile = arg
+        elif parseState == 2: # outFile
+          outFile = arg
+        else:
+          raise Exception("not a valid argument here: '-'")
+        parseState += 1
+      elif parseState == 1: # inFile
+        inFile = arg
+        parseState += 1
+      elif parseState == 2: # outFile
+        outFile = arg
+        parseState += 1
+      elif parseState == 3: # password
+        password = arg;
+
+    if doTest or saveResults:
+      selfTest(os.path.basename(argv[0]) + ".selfTest.") # 
+    elif not inFile or not outFile:
+      raise Exception("input or outfile not supplied.")
+    elif (inFile == '-' or outFile == '-') and not passwd:
+      raise Exception('inFile or outFile is stdin/stdout and no password supplied.')
+  except Exception as e:
+    print( "\n".join(USAGE) + "\n" +  str(e), file=os.sys.stderr)
+
+if __name__ == "__main__":
+  main()
