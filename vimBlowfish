@@ -48,6 +48,33 @@ def bytesToString(bytesIn):
     if i < len(bytesIn): rv += "\n"
   return rv
 
+# class exists so we can check stdin is vim encrypted.
+VIM_MAGIC = b'VimCrypt~03!'
+class Reader:
+  def new (fh): return Reader(fh)
+  def __init__(self, fh):
+    self.salt = self.seed = ''
+    self.fh = fh;
+    self.buf = fh.read(1024)
+    self.idx = 0
+    self.encrypted = self.read(len(VIM_MAGIC)) == VIM_MAGIC
+    if self.encrypted:
+      self.salt = self.read(8)
+      self.seed = self.read(8)
+    else:
+      self.idx = 0
+  def read(self, count):
+    if len(self.buf) > 0:
+      if (len(self.buf) - count) < 0:
+        self.buf += fh.read(1024);
+        self.idx = 0;
+      rv = self.buf[self.idx:self.idx+count]
+      self.idx += len(rv)
+    return rv
+  def getSeed(self): return self.seed
+  def getSalt(self): return self.salt
+  def isVimEncrypted(self): return self.encrypted
+
 from Crypto.Cipher import Blowfish
 swapendian = lambda data: struct.pack('<2L', *struct.unpack('>2L', data))
 class Blowfish_ECB:
@@ -76,24 +103,20 @@ def pwToKey(pw, salt):
   return hashlib.sha256(pw.encode() + salt).digest()
 
 VIM_MAGIC = b'VimCrypt~03!'
-def decrypt(f, pw=None):
-  if f.read(12) != VIM_MAGIC:
+def decrypt(reader, pw):
+  if not reader.isVimEncrypted():
     raise Exception('not a blowfish2-encoded vimcrypt file')
-  salt = f.read(8)
-  seed = f.read(8)
-  if pw is None:
-    pw = getpass.getpass('password: ')
-  key = pwToKey(pw, salt)
+  key = pwToKey(pw, reader.getSalt())
   blowfish = Blowfish_ECB.new(key)
-  iv = seed
-  ciphertext = f.read(8)
+  iv = reader.getSeed()
+  ciphertext = reader.read(8)
   decrypted = bytearray()
   while ciphertext:
     c0 = blowfish.decrypt(iv)
     plaintext = bytes(map(operator.xor, c0, ciphertext))
     decrypted.extend(plaintext)
     iv = ciphertext
-    ciphertext = f.read(8)
+    ciphertext = reader.read(8)
   return decrypted
 
 def encrypt(f, pw, salt, seed):
@@ -123,8 +146,8 @@ def selfTest(saveResults=''):
     [VIM_MAGIC, test_salt, test_seed, test_encrypted])
   testPlaintext = b'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
 
-  f = io.BytesIO(testEncrypted)
-  decrypted = decrypt(f, test_PW)
+  reader = Reader.new(io.BytesIO(testEncrypted))
+  decrypted = decrypt(reader, test_PW)
   if decrypted == testPlaintext:
     print("self test of decryption passed.")
   else:
@@ -160,7 +183,7 @@ def main(argv=sys.argv):
   inFile = outFile = passwd = ''
   try:
     if len(argv) == 1: raise Exception("No arguments given.")
-    for i in (range(len(argv))):
+    for i in (range(1,len(argv))):
       arg = argv[i]
       if re.match('^-[stf]$', arg):
         if parseState == 0:
@@ -171,30 +194,45 @@ def main(argv=sys.argv):
           elif arg == '-f':
             force = True
         else:
-          raise Exception("Not a valid argument here:" + arg)
+          raise Exception("Not a recognized '-' argument:" + arg)
       elif arg == '-':
-        if parseState == 1: # inFile
+        if parseState == 0: # inFile
           inFile = arg
-        elif parseState == 2: # outFile
+          parseState += 1
+        elif parseState == 1: # outFile
           outFile = arg
+          parseState += 1
         else:
           raise Exception("not a valid argument here: '-'")
-        parseState += 1
-      elif parseState == 1: # inFile
+      elif parseState == 0: # inFile
         inFile = arg
         parseState += 1
-      elif parseState == 2: # outFile
+      elif parseState == 1: # outFile
         outFile = arg
         parseState += 1
-      elif parseState == 3: # password
+      elif parseState == 2: # password
         password = arg;
 
     if doTest or saveResults:
-      selfTest(os.path.basename(argv[0]) + ".selfTest.") # 
+      if inFile or outFile or password:
+        raise Exception("if -s or -t, other arguments are not valid.")
+      if saveResults:
+        selfTest(os.path.basename(argv[0]) + ".selfTest.") # 
+      else:
+        selfTest() # 
     elif not inFile or not outFile:
       raise Exception("input or outfile not supplied.")
+    elif not outFile:
+      raise Exception("no output file.")
+    elif outFile != '-' and os.isfile(outFile) and not force:
+      raise Exception("output file exists and no '-f' arg given.")
     elif (inFile == '-' or outFile == '-') and not passwd:
-      raise Exception('inFile or outFile is stdin/stdout and no password supplied.')
+      raise Exception(
+        'inFile or outFile is stdin/stdout and no password supplied.')
+    elif not password:
+      password = getpass.getpass('password: ')
+    reader = Reader.new(inFile)
+
   except Exception as e:
     print( "\n".join(USAGE) + "\n" +  str(e), file=os.sys.stderr)
 
