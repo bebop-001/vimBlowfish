@@ -252,8 +252,9 @@ def main(argv=sys.argv):
     elif not password:
       password = getpass.getpass('password: ')
 
-    fIn = sys.stdin   if inFile == '-' else   io.open(inFile, 'rb')
-    fOut = sys.stdout if outFile == '-' else  io.open(outFile, 'wb')
+    # for read/write stdin/stdout in binary, handle is sys.std~.buffer.
+    fIn = sys.stdin.buffer   if inFile == '-' else   io.open(inFile, 'rb')
+    fOut = sys.stdout.buffer if outFile == '-' else  io.open(outFile, 'wb')
     reader = Reader.new(fIn)
 
     if reader.isVimEncrypted():
