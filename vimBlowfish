@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/python3
 
 import struct, hashlib, unittest, operator, getpass
 
@@ -103,35 +103,32 @@ def pwToKey(pw, salt):
   return hashlib.sha256(pw.encode() + salt).digest()
 
 VIM_MAGIC = b'VimCrypt~03!'
-def decrypt(reader, pw):
+def decrypt(reader, writer, pw):
   if not reader.isVimEncrypted():
     raise Exception('not a blowfish2-encoded vimcrypt file')
   key = pwToKey(pw, reader.getSalt())
   blowfish = Blowfish_ECB.new(key)
   iv = reader.getSeed()
   ciphertext = reader.read(8)
-  decrypted = bytearray()
   while ciphertext:
     c0 = blowfish.decrypt(iv)
     plaintext = bytes(map(operator.xor, c0, ciphertext))
-    decrypted.extend(plaintext)
+    writer.write(plaintext)
     iv = ciphertext
     ciphertext = reader.read(8)
-  return decrypted
 
-def encrypt(f, pw, salt, seed):
+def encrypt(f, writer, pw, salt, seed):
   key = pwToKey(pw, salt)
   blowfish = Blowfish_ECB.new(key)
-  encrypted = bytearray(VIM_MAGIC + salt + seed)
+  writer.write(VIM_MAGIC + salt + seed)
   iv = seed
   plaintext = f.read(8)
   while plaintext:
     c0 = blowfish.decrypt(iv)
     ciphertext = bytes(map(operator.xor, c0, plaintext))
-    encrypted.extend(ciphertext)
+    writer.write(ciphertext)
     iv = ciphertext
     plaintext = f.read(8)
-  return encrypted
 
 # Using info from a file created using vim with blowfish2, compare
 # results encrypting and decrypting the file.
@@ -147,7 +144,10 @@ def selfTest(saveResults=''):
   testPlaintext = b'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
 
   reader = Reader.new(io.BytesIO(testEncrypted))
-  decrypted = decrypt(reader, test_PW)
+  writer = io.BytesIO()
+  decrypt(reader, writer, test_PW)
+  decrypted = writer.getvalue()
+  writer.close()
   if decrypted == testPlaintext:
     print("self test of decryption passed.")
   else:
@@ -155,7 +155,10 @@ def selfTest(saveResults=''):
     print("testPlaintext:\n" + bytesToString(testPlaintext) + "\n"
       + "decrypted:\n" + bytesToString(decrypted))
   f = io.BytesIO(testPlaintext)
-  encrypted = encrypt(f, test_PW, test_salt, test_seed)
+  writer = io.BytesIO()
+  encrypt(f, writer, test_PW, test_salt, test_seed)
+  encrypted = writer.getvalue()
+  writer.close()
   if encrypted == testEncrypted: print("self test of encryption passed.")
   else: print("self test of encryption FAILED.\n"
       + "testEncrypted:\n" + bytesToString(testEncrypted)
@@ -180,7 +183,7 @@ def main(argv=sys.argv):
   USAGE = USAGE.split("\n")
   parseState = 0;
   force = doTest = saveResults = False
-  inFile = outFile = passwd = ''
+  inFile = outFile = password = ''
   try:
     if len(argv) == 1: raise Exception("No arguments given.")
     for i in (range(1,len(argv))):
@@ -220,18 +223,37 @@ def main(argv=sys.argv):
         selfTest(os.path.basename(argv[0]) + ".selfTest.") # 
       else:
         selfTest() # 
+      exit(0)
     elif not inFile or not outFile:
       raise Exception("input or outfile not supplied.")
     elif not outFile:
       raise Exception("no output file.")
     elif outFile != '-' and os.isfile(outFile) and not force:
       raise Exception("output file exists and no '-f' arg given.")
-    elif (inFile == '-' or outFile == '-') and not passwd:
+    elif (inFile == '-' or outFile == '-') and not password:
       raise Exception(
         'inFile or outFile is stdin/stdout and no password supplied.')
     elif not password:
       password = getpass.getpass('password: ')
-    reader = Reader.new(inFile)
+
+    fIn = fOut = ''
+    if inFile == '-':
+      if sys.stdin.isatty():
+        raise Exception('inFile is stdin but stdin is a tty.')
+      fIn = sys/stdin
+    else:
+      fIn = sys.open(inFile, 'rb')
+    if outFile == '-':
+      if sys.stdout.isatty():
+        raise Exception('outFile is stdout but stdout is a tty.')
+      fOut = sys.stdout
+    else:
+      fOut = sys.open(outFile, 'wb')
+    reader = Reader.new(fIn)
+    if reader.isVimEncrypted():
+      decrypted = decrypt(reader)
+      encrypt
+    exit()
 
   except Exception as e:
     print( "\n".join(USAGE) + "\n" +  str(e), file=os.sys.stderr)
