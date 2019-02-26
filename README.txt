@@ -28,8 +28,11 @@ looked at mostly was https://github.com/gertjanvanzwieten/vimdecrypt.
 Without Gertjan van Zwieten's example, I would never have been
 able to figure out how to do this.  Thank you Gertjan!
 
+The tool requires the PyCrypto library.
+
 The tool was written on Linux and I have not tried to run it
-under Windows or IOS.  If port it to another OS and would
+under Windows or IOS.  If you port it to another OS and would
 like your changes incorporated here, please let me know.
+Likewise, if you discover bugs in the code, please let me know.
 
 Steve Smith
