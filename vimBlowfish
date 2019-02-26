@@ -1,8 +1,22 @@
 #!/usr/bin/python3
+# ===================================================================
+# The contents of this file are dedicated to the public domain.  To
+# the extent that dedication to the public domain is not available,
+# everyone is granted a worldwide, perpetual, royalty-free,
+# non-exclusive license to exercise all rights associated with the
+# contents of this file for any purpose whatsoever.
+# No rights are reserved.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+# EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+# MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+# NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS
+# BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN
+# ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+# CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+# ===================================================================
 
-import struct, hashlib, unittest, operator, getpass
-
-appBaseName = ''
 USAGE = """USAGE: %s [-t -s -f] inFile outFile [password]
   -t  Run the selftest, print results and exit
   -s  Run the selftest, print results and and save to files, then
@@ -19,7 +33,7 @@ USAGE = """USAGE: %s [-t -s -f] inFile outFile [password]
      '-' for inFile/outFile means send input/output to stdin/stdout.
      If inFile or outFile is to stdin/stdout, a command line password
   must be supplied.
-  """
+"""
 
 # For debut print input bytes in format similar to old dos debug output.
 def bytesToString(bytesIn):
@@ -48,9 +62,10 @@ def bytesToString(bytesIn):
     if i < len(bytesIn): rv += "\n"
   return rv
 
-# class exists so we can check stdin is vim encrypted.
-VIM_MAGIC = b'VimCrypt~03!'
+# class exists so we can check stdin is vim encrypted.  For other
+# files we could just seek(0)
 class Reader:
+  VIM_MAGIC = b'VimCrypt~03!'
   def new (fh): return Reader(fh)
   def __init__(self, fh):
     self.salt = self.seed = ''
@@ -74,8 +89,10 @@ class Reader:
   def getSeed(self): return self.seed
   def getSalt(self): return self.salt
   def isVimEncrypted(self): return self.encrypted
+  def close(): self.fh.close()
 
 from Crypto.Cipher import Blowfish
+import struct
 swapendian = lambda data: struct.pack('<2L', *struct.unpack('>2L', data))
 class Blowfish_ECB:
   def new(key) : return Blowfish_ECB(key)
@@ -97,11 +114,13 @@ class Blowfish_ECB:
       self.type = 'encrypt'
     return swapendian(self.blowfish.decrypt(swapendian(plaintext)))
 
+import hashlib
 def pwToKey(pw, salt):
   for i in range(1000):
     pw = hashlib.sha256(pw.encode() + salt).hexdigest()
   return hashlib.sha256(pw.encode() + salt).digest()
 
+import operator
 VIM_MAGIC = b'VimCrypt~03!'
 def decrypt(reader, writer, pw):
   if not reader.isVimEncrypted():
@@ -240,7 +259,7 @@ def main(argv=sys.argv):
     if inFile == '-':
       if sys.stdin.isatty():
         raise Exception('inFile is stdin but stdin is a tty.')
-      fIn = sys/stdin
+      fIn = sys.stdin
     else:
       fIn = sys.open(inFile, 'rb')
     if outFile == '-':
