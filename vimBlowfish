@@ -151,7 +151,7 @@ def encrypt(f, writer, pw, salt, seed):
 
 # Using info from a file created using vim with blowfish2, compare
 # results encrypting and decrypting the file.
-def selfTest(saveResults=''):
+def selfTest(saveResults):
   test_PW = 'hello'
   test_salt = b'\x09\x5b\x17\xda\xdc\xd0\xb7\x16'
   test_seed = b'\x52\x01\xb1\x60\x85\x30\x9a\x7a'
@@ -184,16 +184,12 @@ def selfTest(saveResults=''):
       + "\nencrypted:\n" + bytesToString(encrypted))
   encryptedresults = decryptedResults = ''
   if saveResults:
-    fName = saveResults + '%s.%s' % ('encrypted', test_PW)
+    fName = 'selfTest.encrypted.%s.txt' % (test_PW)
     print ("Saving to " + fName)
-    saveTo = open(fName, 'wb')
-    saveTo.write(encrypted)
-    saveTo.close()
-    fName = saveResults + '%s.%s' % ('decrypted', test_PW)
+    saveTo = open(fName, 'wb'); saveTo.write(encrypted); saveTo.close()
+    fName = 'selfTest.plaintext.txt'
     print ("Saving to " + fName)
-    saveTo = open(fName, 'wb')
-    saveTo.write(decrypted)
-    saveTo.close()
+    saveTo = open(fName, 'wb'); saveTo.write(decrypted); saveTo.close()
 
 import io, os, re, sys
 def main(argv=sys.argv):
@@ -238,10 +234,7 @@ def main(argv=sys.argv):
     if doTest or saveResults:
       if inFile or outFile or password:
         raise Exception("if -s or -t, other arguments are not valid.")
-      if saveResults:
-        selfTest(os.path.basename(argv[0]) + ".selfTest.") # 
-      else:
-        selfTest() # 
+      selfTest(saveResults)
       exit(0)
     elif not inFile or not outFile:
       raise Exception("input or outfile not supplied.")
