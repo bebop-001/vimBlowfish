@@ -70,7 +70,7 @@ class Reader:
   def __init__(self, fh):
     self.salt = self.seed = ''
     self.fh = fh;
-    self.buf = fh.read(1024)
+    self.buf = b''
     self.idx = 0
     self.encrypted = self.read(len(VIM_MAGIC)) == VIM_MAGIC
     if self.encrypted:
@@ -79,17 +79,18 @@ class Reader:
     else:
       self.idx = 0
   def read(self, count):
+    rv = b''
+    if self.idx + count > len(self.buf):
+      self.buf = self.buf[self.idx:] + self.fh.read(1024);
+      self.idx = 0;
     if len(self.buf) > 0:
-      if (len(self.buf) - count) < 0:
-        self.buf += fh.read(1024);
-        self.idx = 0;
       rv = self.buf[self.idx:self.idx+count]
       self.idx += len(rv)
     return rv
   def getSeed(self): return self.seed
   def getSalt(self): return self.salt
   def isVimEncrypted(self): return self.encrypted
-  def close(): self.fh.close()
+  def close(self): self.fh.close()
 
 from Crypto.Cipher import Blowfish
 import struct
@@ -136,7 +137,10 @@ def decrypt(reader, writer, pw):
     iv = ciphertext
     ciphertext = reader.read(8)
 
-def encrypt(f, writer, pw, salt, seed):
+from Crypto import Random
+def encrypt(f, writer, pw
+    , salt=Random.get_random_bytes(8)
+    , seed=Random.get_random_bytes(8)):
   key = pwToKey(pw, salt)
   blowfish = Blowfish_ECB.new(key)
   writer.write(VIM_MAGIC + salt + seed)
@@ -191,7 +195,7 @@ def selfTest(saveResults):
     print ("Saving to " + fName)
     saveTo = open(fName, 'wb'); saveTo.write(decrypted); saveTo.close()
 
-import io, os, re, sys
+import getpass, io, os, re, sys
 def main(argv=sys.argv):
   global USAGE
   USAGE = USAGE % (os.path.basename(argv[0]))
@@ -240,7 +244,7 @@ def main(argv=sys.argv):
       raise Exception("input or outfile not supplied.")
     elif not outFile:
       raise Exception("no output file.")
-    elif outFile != '-' and os.isfile(outFile) and not force:
+    elif outFile != '-' and os.path.isfile(outFile) and not force:
       raise Exception("output file exists and no '-f' arg given.")
     elif (inFile == '-' or outFile == '-') and not password:
       raise Exception(
@@ -248,27 +252,20 @@ def main(argv=sys.argv):
     elif not password:
       password = getpass.getpass('password: ')
 
-    fIn = fOut = ''
-    if inFile == '-':
-      if sys.stdin.isatty():
-        raise Exception('inFile is stdin but stdin is a tty.')
-      fIn = sys.stdin
-    else:
-      fIn = sys.open(inFile, 'rb')
-    if outFile == '-':
-      if sys.stdout.isatty():
-        raise Exception('outFile is stdout but stdout is a tty.')
-      fOut = sys.stdout
-    else:
-      fOut = sys.open(outFile, 'wb')
+    fIn = sys.stdin   if inFile == '-' else   io.open(inFile, 'rb')
+    fOut = sys.stdout if outFile == '-' else  io.open(outFile, 'wb')
     reader = Reader.new(fIn)
+
     if reader.isVimEncrypted():
-      decrypted = decrypt(reader)
-      encrypt
-    exit()
+      decrypt(reader, fOut, password)
+    else:
+      encrypt(reader, fOut, password)
+    reader.close(); fOut.close()
 
   except Exception as e:
     print( "\n".join(USAGE) + "\n" +  str(e), file=os.sys.stderr)
+    exit(1)
+  exit(0)
 
 if __name__ == "__main__":
   main()
