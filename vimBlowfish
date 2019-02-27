@@ -104,8 +104,7 @@ class Blowfish_ECB:
     if self.type:
       if self.type != 'decrypt':
         raise Exception('cipher already used as type: ' + self.type)
-    else:
-      self.type = 'decrypt'
+    else: self.type = 'decrypt'
     return swapendian(self.blowfish.encrypt(swapendian(ciphertext)))
   def encrypt(self, plaintext):
     if self.type:
@@ -128,6 +127,15 @@ def decrypt(reader, writer, pw):
     raise Exception('not a blowfish2-encoded vimcrypt file')
   key = pwToKey(pw, reader.getSalt())
   blowfish = Blowfish_ECB.new(key)
+  #             ciphertext[0]    /        ciphertext[N+1]   /
+  #                  |           /              |           /
+  #                  +-----+     /              +-----+     /
+  #                  |     |     /              |     |     /
+  #                  v     |     /              v     |     /
+  # IV--->D(key)-->(xor)   +-IV->/-->D(key)-->(xor)   +-IV->/  ETC...
+  #                  |           /              |           /
+  #                  v           /              v           /
+  #             plaintext[0]     /         plaintext[N+1]   /
   iv = reader.getSeed()
   ciphertext = reader.read(8)
   while ciphertext:
@@ -144,6 +152,15 @@ def encrypt(f, writer, pw
   key = pwToKey(pw, salt)
   blowfish = Blowfish_ECB.new(key)
   writer.write(VIM_MAGIC + salt + seed)
+  #             plaintext[0]     /         plaintext[N+1]   /
+  #                  |           /              |           /
+  #                  v           /              v           /
+  # IV--->D(key)-->(xor)   +-IV->/-->D(key)-->(xor)   +-IV->/  ETC...
+  #                  |     |     /              |     |     /
+  #                  +-----+     /              +-----+     /
+  #                  |           /              |           /
+  #                  v           /              v           /
+  #             ciphertext[0]    /        ciphertext[N+1]   /
   iv = seed
   plaintext = f.read(8)
   while plaintext:
