@@ -1,0 +1,53 @@
+#!/usr/bin/perl -w
+use strict;
+use warnings;
+
+use Cwd qw(abs_path);
+
+my ($FuncDir, $FuncName) = (abs_path($0) =~ m{^(.*)/(.*)});
+my $printVerbose;
+sub Verbose {
+    print @_ if $printVerbose;
+}
+if (grep $_ eq'-v', @ARGV) {
+    @ARGV = grep $_ ne '-v', @ARGV;
+    $printVerbose++;
+}
+
+Verbose("Test stdin/stdout.\n");
+
+my $errors = 0;
+# Make sure password requirement still works.
+my $exec = '../vimBlowfish';
+my $result = `$exec - - < $exec > t 2> t1`;
+my $success = $? != 0;
+system('/bin/grep', '-q', 'no password supplied.', 't1');
+my $foundMessage = $? == 0;
+if ($success && $foundMessage) {
+    Verbose("check for password is good.\n");
+}
+else {
+    print("should not run unless password on command is there.\n");
+    $errors++;
+}
+$result = `$exec - - hello < $exec > t`;
+if ($? != 0) {
+    print "stdin to file t failed.\n";
+    $errors++;
+}
+else {
+    $result = `$exec - - hello < t > t1`;
+    `/usr/bin/cmp $exec t1`;
+    if ($? != 0) {
+        print "Failed to crypt/decrypt $exec to t1.\n";
+        $errors++;
+    }
+}
+if ($errors == 0) {
+    Verbose("Stdin/stdout tests look ok.\n");
+}
+else {
+    print "Tests of stdin/stdout failed.\n";
+}
+exit $errors;
+

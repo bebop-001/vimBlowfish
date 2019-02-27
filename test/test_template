@@ -1,0 +1,15 @@
+#!/usr/bin/perl -w
+use strict;
+use warnings;
+
+use Cwd qw(abs_path);
+
+my ($FuncDir, $FuncName) = (abs_path($0) =~ m{^(.*)/(.*)});
+my $printVerbose;
+sub Verbose {
+    print @_ if $printVerbose;
+}
+if (grep $_ eq'-v', @ARGV) {
+    @ARGV = grep $_ ne '-v', @ARGV;
+    $printVerbose++;
+}

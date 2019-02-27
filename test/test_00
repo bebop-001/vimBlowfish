@@ -1,0 +1,42 @@
+#!/usr/bin/perl -w
+use strict;
+use warnings;
+
+use Cwd qw(abs_path);
+
+my ($FuncDir, $FuncName) = (abs_path($0) =~ m{^(.*)/(.*)});
+
+my $printVerbose;
+sub Verbose {
+    print @_ if $printVerbose;
+}
+if (grep $_ eq'-v', @ARGV) {
+    @ARGV = grep $_ ne '-v', @ARGV;
+    $printVerbose++;
+}
+
+Verbose("Testing selfTest function.\n");
+
+my %testInfo = (
+    'selfTest.encrypted.hello.txt' => [466205040, 54],
+    'selfTest.plaintext.txt' => [1303055603, 26]
+);
+
+my $errors = 0;
+unlink keys %testInfo;
+my $result = `../vimBlowfish -s`;
+map {
+    if(! -f $_) {
+        print "Failed to create $_\n";
+        $errors++;
+    }
+    else {
+        my @ti = @{$testInfo{$_}};
+        my @x = (`/usr/bin/cksum $_` =~ m{^(\d+)\s+(\d+)\s+.*$});
+        unless ($ti[0] == $x[0] && $ti[1] == $x[1]) {
+            print "cksum $_ FAILED: expected: @ti, got: @x\n";
+            $errors++
+        }
+    }
+} keys %testInfo;
+exit($errors);
