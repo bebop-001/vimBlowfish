@@ -43,14 +43,14 @@ def bytesToString(bytesIn):
   # for each 16 byte segment of the input bytes...
   while i < len(bytesIn):
     b = bytesIn[i:i+16]
-    b0 = b[0:7]
+    b0 = b[0:8]
     b1 = b[8:] if len(b) > 8 else []
     # print hex chars.
     s = "%3d" % (i) + ''.join(" {:02x}".format(x) for x in (b0))
     if b1:
       s += ' |' + ''.join(" {:02x}".format(x) for x in (b1))
     # extend string for formattng.
-    while len(s) < 53: s += ' '
+    while len(s) < 55: s += ' '
     # print ascci or indicate char is NON_PRINT_ASCII.
     for x in (b0):
       s += chr(NON_PRINT_ASCII) if x < ord(' ') or x > ord('~') else chr(x)
@@ -118,7 +118,8 @@ import hashlib
 def pwToKey(pw, salt):
   for i in range(1000):
     pw = hashlib.sha256(pw.encode() + salt).hexdigest()
-  return hashlib.sha256(pw.encode() + salt).digest()
+  pw = hashlib.sha256(pw.encode() + salt).digest()
+  return pw
 
 import operator
 VIM_MAGIC = b'VimCrypt~03!'
