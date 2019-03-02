@@ -278,6 +278,10 @@ def main(argv=sys.argv):
     if reader.isVimEncrypted():
       decrypt(reader, fOut, password)
     else:
+      if inFile != '-' and not doTest:
+        verify = getpass.getpass('verify password: ')
+        if verify != password:
+          print("verify FAILED", file=sys.stderr)
       encrypt(reader, fOut, password)
     reader.close(); fOut.close()
 
